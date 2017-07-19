@@ -42,14 +42,14 @@
 // Constraints
 // 0 < N < 10000
 // Example
-// Entrée
+// Input
 // 3,879483
 // 43,608177
 // 3
 // 1;Maison de la Prevention Sante;6 rue Maguelone 340000 Montpellier;;3,87952263361082;43,6071285339217
 // 2;Hotel de Ville;1 place Georges Freche 34267 Montpellier;;3,89652239197876;43,5987299452849
 // 3;Zoo de Lunaret;50 avenue Agropolis 34090 Mtp;;3,87388031141133;43,6395872778854
-// Sortie
+// Output
 // Maison de la Prevention Sante
 
 #include <iostream>
@@ -57,27 +57,96 @@
 #include <vector>
 #include <algorithm>
 
-using namespace std;
+std::vector<std::string> string_split(const std::string &source, const char *delimiter, bool keepEmpty) {
+        std::vector<std::string> results;
+        size_t prev = 0;
+        size_t next = 0;
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
+        while((next = source.find_first_of(delimiter, prev)) != std::string::npos)
+        {
+            if(keepEmpty || (next - prev != 0)) {
+                    results.push_back(source.substr(prev,next-prev));
+            }
+            prev = next + 1;
+        }
+        if(prev <= source.size())
+        {
+            results.push_back(source.substr(prev));
+        }
+        return results;
+}
+
+double euro_string_2_double(std::string str)
+{
+    auto found_comma = str.find_first_of(',');
+    str.replace(found_comma, 1, ".");
+    return std::stod(str);
+}
+
+struct Defibrillator
+{
+    Defibrillator(std::string data)
+    {
+        auto tokens = string_split(data, ";", true);
+
+        Name = tokens[1];
+        Address = tokens[2];
+        lon = euro_string_2_double(tokens[4]);
+        lat = euro_string_2_double(tokens[5]);
+    }
+    std::string Name;
+    std::string Address;
+    double lon;
+    double lat;
+};
+
+double dist(double lat_a, double lon_a, double lat_b, double lon_b)
+{
+    double deg_to_rad = 3.1415926535897932384626433 / 180.0;
+    lat_a *= deg_to_rad;
+    lon_a *= deg_to_rad;
+    lat_b *= deg_to_rad;
+    lon_b *= deg_to_rad;
+    double x = (lon_b - lon_a) * std::cos((lat_a + lat_b) / 2);
+    double y = lat_b - lat_a;
+    return std::sqrt(x*x + y*y) * 6371.0;
+}
+
 int main()
 {
-    string LON;
-    cin >> LON; cin.ignore();
-    string LAT;
-    cin >> LAT; cin.ignore();
+    std::cerr.precision(20);
+    std::vector<Defibrillator> list;
+    std::string LON;
+    std::cin >> LON; std::cin.ignore();
+    std::string LAT;
+    std::cin >> LAT; std::cin.ignore();
+    double my_lat = euro_string_2_double(LAT);
+    double my_lon = euro_string_2_double(LON);
+    std::cerr << "MY Pos: " << LAT << ", " << LON << std::endl;
+    std::cerr << "MY Pos: " << my_lat << ", " << my_lon << std::endl;
     int N;
-    cin >> N; cin.ignore();
+    std::cin >> N; std::cin.ignore();
     for (int i = 0; i < N; i++) {
-        string DEFIB;
-        getline(cin, DEFIB);
+        std::string DEFIB;
+        getline(std::cin, DEFIB);
+        std::cerr << DEFIB << std::endl;
+        list.push_back(Defibrillator(DEFIB));
+    }
+
+    std::sort(list.begin(), list.end(), [&](const Defibrillator &lh, const Defibrillator &rh)
+    {
+        double dist_lh = dist(lh.lat, lh.lon, my_lat, my_lon);
+        double dist_rh = dist(rh.lat, rh.lon, my_lat, my_lon);
+        return dist_lh < dist_rh;
+    });
+
+    for (auto &d : list)
+    {
+        std::cerr << d.Name << " = " << dist(d.lat, d.lon, my_lat, my_lon) << std::endl;
     }
 
     // Write an action using cout. DON'T FORGET THE "<< endl"
     // To debug: cerr << "Debug messages..." << endl;
 
-    cout << "answer" << endl;
+    std::cout << list.at(0).Name << std::endl;
 }
