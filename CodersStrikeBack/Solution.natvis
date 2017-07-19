@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010"> 
+    <Type Name="Solution">
+        <DisplayString>Score: {score} | {my_genes.genes[0].angle_gene[0]}, {my_genes.genes[0].thrust_gene[0]}, {my_genes.genes[0].shield_gene[0]}</DisplayString>
+    </Type>
+</AutoVisualizer>
