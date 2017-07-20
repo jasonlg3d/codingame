@@ -27,6 +27,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Defibrillators", "Defibrill
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HorseRacingDuals", "HorseRacingDuals\HorseRacingDuals.vcxproj", "{53ECC8BE-998B-458D-80CF-BB939207AC42}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThereIsNoSpoon", "ThereIsNoSpoon\ThereIsNoSpoon.vcxproj", "{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -131,6 +133,14 @@ Global
 		{53ECC8BE-998B-458D-80CF-BB939207AC42}.Release|x64.Build.0 = Release|x64
 		{53ECC8BE-998B-458D-80CF-BB939207AC42}.Release|x86.ActiveCfg = Release|Win32
 		{53ECC8BE-998B-458D-80CF-BB939207AC42}.Release|x86.Build.0 = Release|Win32
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Debug|x64.ActiveCfg = Debug|x64
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Debug|x64.Build.0 = Debug|x64
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Debug|x86.ActiveCfg = Debug|Win32
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Debug|x86.Build.0 = Debug|Win32
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x64.ActiveCfg = Release|x64
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x64.Build.0 = Release|x64
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x86.ActiveCfg = Release|Win32
+		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
