@@ -129,7 +129,7 @@ public:
     {
         for (int i = 0; i < pts.size() - 1; ++i)
         {
-            if (pts.at(i).x < loc && loc < pts.at(i + 1).x)
+            if (pts.at(i).x + 5 < loc && loc < pts.at(i + 1).x - 5)
             {
                 return pts.at(i).y == pts.at(i + 1).y;
             }
@@ -176,6 +176,11 @@ public:
         pos.y += velocity.dy * time + 0.5 * accel_vec.dy * time * time;
         velocity.dx += accel_vec.dx * time;
         velocity.dy += accel_vec.dy * time;
+
+        //pos.x = static_cast<int>(pos.x);
+        //pos.y = static_cast<int>(pos.y);
+        //velocity.dx = static_cast<int>(velocity.dx);
+        //velocity.dy = static_cast<int>(velocity.dy);
     }
 
     Vector velocity;
@@ -247,16 +252,35 @@ struct Lander
 
     void ComputeTrajectory(double time)
     {
-        State curr_state = initial_state;
+        State next_state = initial_state;
         for (int i = 0; i < commands.size(); ++i)
         {
-            State next_state = ComputeNextState(curr_state, commands.at(i), time);
-            trajectory.push_back(next_state);
-            curr_state = next_state;
-
-            if (EvaluateOutside(curr_state)) { return; }
-            if (EvaluateHitTheGround(curr_state)) { return; }
-            if (EvaluateNoFuel(curr_state)) { return; }
+            ControlCommand &cmd = commands.at(i);
+            int new_ang = next_state.angle;
+            int new_pwr = next_state.power;
+    
+            double elapsed = 0.0;
+            int new_fuel = next_state.fuel;
+            Particle new_particle = next_state.lander;
+            while (elapsed <= cmd.duration)
+            {
+                new_ang = next_state.angle + std::min(std::max((cmd.angle - next_state.angle), -15), 15);
+                new_pwr = next_state.power + std::min(std::max((cmd.power - next_state.power), -1), 1);
+                Vector thrust_accel = (Vector(0.0, 1.0) * new_pwr).rotate(new_ang * DEGREES_TO_RAD);
+                Vector accel = thrust_accel + GRAVITY;
+                new_particle.Accelerate(accel, time);
+                new_fuel = next_state.fuel - new_pwr;
+                elapsed += time;
+                next_state.angle = new_ang;
+                next_state.fuel = new_fuel;
+                next_state.power = new_pwr;
+                next_state.lander = new_particle;                
+                trajectory.push_back(next_state);
+    
+                if (EvaluateOutside(next_state)) { return; }
+                if (EvaluateHitTheGround(next_state)) { return; }
+                if (EvaluateNoFuel(next_state)) { return; }
+            }
         }
     }
 
@@ -282,6 +306,8 @@ struct Lander
             next_state.fuel = new_fuel;
             next_state.power = new_pwr;
             next_state.lander = new_particle;
+            
+            trajectory.push_back(next_state);
         }
         return State(new_fuel, new_pwr, new_ang, new_particle);
     }
@@ -299,12 +325,13 @@ struct Lander
     bool EvaluateHitTheGround(const State &st)
     {
         double height_at = ground.GetYAtX(st.lander.pos.x);
-
-        if (height_at > st.lander.pos.y)
+        bool is_flat = ground.IsHorizontalAt(st.lander.pos.x);
+        double clearance = is_flat ? 0.0 : 100.0;
+        if (height_at + clearance >= st.lander.pos.y)
         {
             if (st.angle == 0 &&
-                st.lander.velocity.dy > -40.0 &&
-                std::abs(st.lander.velocity.dx) <= 20.0 &&
+                st.lander.velocity.dy > -39.0 &&
+                std::abs(st.lander.velocity.dx) <= 19.0 &&
                 ground.IsHorizontalAt(st.lander.pos.x))
             {
                 fly_state = LANDED;
@@ -334,9 +361,9 @@ struct Lander
     FlyState fly_state;
 };
 
-const int GENERATION_COUNT   = 220;
+const int GENERATION_COUNT   = 400;
 const int POPULATION_SIZE    = 20;
-const int GENOME_SIZE        = 1200;
+const int GENOME_SIZE        = 80;
 const double UNIFORM_RATE    = 0.5;
 const double MUTATION_RATE   = 0.06;
 const double SELECTION_RATIO = 0.2;
@@ -473,8 +500,8 @@ struct Autopilot
             }
             else
             {
-                mutation_rate = std::max(0.8, mutation_rate - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.5);
-                mutation_amplitude = std::max(0.05, mutation_amplitude - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.1);
+                mutation_rate = std::max(0.6, mutation_rate - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.1);
+                mutation_amplitude = std::max(0.08, mutation_amplitude - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.1);
             }
             
             population = std::move(next_pop);
@@ -500,7 +527,11 @@ struct Autopilot
             }
         }
 
-        std::cout << population.at(0).fitness_score << std::endl;
+        std::cerr << population.at(0).fitness_score << std::endl;
+        for(auto & t : population.at(0).lander.trajectory)
+        {
+            std::cerr << "h @ " << t.lander.pos.x << " = " << ground.GetYAtX(t.lander.pos.x) << std::endl;
+        }
         //std::cin.ignore();
     }
 
@@ -642,26 +673,26 @@ struct Autopilot
             int angle = lander.trajectory.back().angle;
 
             
-            if (-40.0 <= yvel && yvel < 0.0)
+            if (-39.0 <= yvel && yvel < 0.0)
             {
-                ind.fitness_score += 100.0;
+                ind.fitness_score += 200.0;
             }
-            else if(yvel < -40)
+            else if(yvel < -39.0)
             {
-                double t = -40 - yvel;
-                ind.fitness_score -= t * t;
+                double t = -39 - yvel;
+                ind.fitness_score -= t * t * 1.1;
             }
             else if (yvel >= 0.0)
             {
                 ind.fitness_score -= yvel;
             }
 
-            if (std::abs(xvel) > 20.0)
+            if (std::abs(xvel) > 19.0)
             {
-                double t = std::abs(20 - std::abs(xvel));
+                double t = std::abs(19.0 - std::abs(xvel));
                 ind.fitness_score -= t*t;
             }
-            else if (std::abs(xvel) < 20)
+            else if (std::abs(xvel) < 19.0)
             {
                 ind.fitness_score += 100.0;
             }
@@ -741,71 +772,56 @@ void test()
 
 }
 
+void execute()
+{
+    Autopilot ap;
+    int surfaceN; // the number of points used to draw the surface of Mars.
+    std::cin >> surfaceN; std::cin.ignore();
+    for (int i = 0; i < surfaceN; i++) {
+        int landX; // X coordinate of a surface point. (0 to 6999)
+        int landY; // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
+        std::cin >> landX >> landY; std::cin.ignore();
+        
+        ap.AddSurfacePoint(Point(landX, landY));
+    }
+    
+    bool first_pass = true;
+    int step = 0;
+    while (1) {
+    
+        int x;
+        int y;
+        int hspeed;
+        int vspeed;
+        int fuel;
+        int rotate;
+        int power;
+        std::cin >> x >> y >> hspeed >> vspeed >> fuel >> rotate >> power; std::cin.ignore();
+        if (first_pass)
+        {
+            State is;
+            is.angle = rotate;
+            is.fuel = fuel;
+            is.power = power;
+            is.lander.pos.x = x;
+            is.lander.pos.y = y;
+            is.lander.velocity.dx = hspeed;
+            is.lander.velocity.dy = vspeed;
+    
+            ap.Init(is);
+            ap.FindSolution();
+            first_pass = false;
+        }
+        
+        ap.PrintCommand(step);
+        ++step;
+    }
+}
 int main()
 {
-    test();
-    //Autopilot ap;
-    //int surfaceN; // the number of points used to draw the surface of Mars.
-    //std::cin >> surfaceN; std::cin.ignore();
-    //for (int i = 0; i < surfaceN; i++) {
-    //    int landX; // X coordinate of a surface point. (0 to 6999)
-    //    int landY; // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
-    //    std::cin >> landX >> landY; std::cin.ignore();
-    //    
-    //    ap.AddSurfacePoint(Point(landX, landY));
-    //}
-    //
-    //bool first_pass = true;
-    //int step = 0;
-    //while (1) {
-    //
-    //    int x;
-    //    int y;
-    //    int hspeed;
-    //    int vspeed;
-    //    int fuel;
-    //    int rotate;
-    //    int power;
-    //    std::cin >> x >> y >> hspeed >> vspeed >> fuel >> rotate >> power; std::cin.ignore();
-    //    if (first_pass)
-    //    {
-    //        State is;
-    //        is.angle = rotate;
-    //        is.fuel = fuel;
-    //        is.power = power;
-    //        is.lander.pos.x = x;
-    //        is.lander.pos.y = y;
-    //        is.lander.velocity.dx = hspeed;
-    //        is.lander.velocity.dy = vspeed;
-    //
-    //        ap.Init(is);
-    //        ap.FindSolution();
-    //        first_pass = false;
-    //    }
-    //    
-    //    ap.PrintCommand(step);
-    //    ++step;
-    //}
-    //ap.AddSurfacePoint(Point(   0, 1000));
-    //ap.AddSurfacePoint(Point( 300, 1500));
-    //ap.AddSurfacePoint(Point( 350, 1400));
-    //ap.AddSurfacePoint(Point( 500, 2000));
-    //ap.AddSurfacePoint(Point( 800, 1800));
-    //ap.AddSurfacePoint(Point(1000, 2500));
-    //ap.AddSurfacePoint(Point(1200, 2100));
-    //ap.AddSurfacePoint(Point(1500, 2400));
-    //ap.AddSurfacePoint(Point(2000, 1000));
-    //ap.AddSurfacePoint(Point(2200,  500));
-    //ap.AddSurfacePoint(Point(2500,  100));
-    //ap.AddSurfacePoint(Point(2900,  800));
-    //ap.AddSurfacePoint(Point(3000,  500));
-    //ap.AddSurfacePoint(Point(3200, 1000));
-    //ap.AddSurfacePoint(Point(3500, 2000));
-    //ap.AddSurfacePoint(Point(3800,  800));
-    //ap.AddSurfacePoint(Point(4000,  200));
-    //ap.AddSurfacePoint(Point(5000,  200));
-    //ap.AddSurfacePoint(Point(5500, 1500));
-    //ap.AddSurfacePoint(Point(6999, 2800));
+    //test();
+    
+    execute();
 
     return 0;
 }
