@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <vector>
 #include <iostream>
+#include <chrono>
+#include <numeric>
 
 const double PI = 3.1415927;
 const double DEGREES_TO_RAD = PI / 180.0;
@@ -9,505 +11,709 @@ const double RAD_TO_DEGREES = 180.0 / PI;
 
 const double SHIP_RADIUS = 100.0;
 
+static unsigned int g_seed;
+// Used to seed the generator.           
+inline void fast_srand(int seed) {
+    g_seed = seed;
+}
+
+// Compute a pseudorandom integer.
+// Output value in range [0, 32767]
+inline double fast_rand(double min, double max) {
+    g_seed = (214013*g_seed+2531011);
+    int result = (g_seed>>16)&0x7FFF;
+
+    if (min < 0.0)
+    {
+        if (result < 16384.0f)
+        {
+            return static_cast<double>(result / 16384.0) * min;
+        }
+        else
+        {
+            return static_cast<double>(result - 16384.0) / 16384.0f * max;
+        }
+    }
+    else
+    {
+        return min + static_cast<double>(result / 32767.0) * (max - min);
+    }
+}
+
+class Vector
+{
+public:
+    Vector()
+        : dx(0.0)
+        , dy(0.0)
+    {}
+
+    Vector(double _dx, double _dy)
+        : dx(_dx)
+        , dy(_dy)
+    {}
+
+    double dx;
+    double dy;
+
+    Vector rotate(double angle_rad)
+    {
+        return Vector(
+            this->dx * std::cos(angle_rad) - this->dy * std::sin(angle_rad),
+            this->dx * std::sin(angle_rad) + this->dy * std::cos(angle_rad)
+        );
+    }
+
+    Vector operator+(const Vector &v) const
+    {
+        return Vector(this->dx + v.dx, this->dy + v.dy);
+    }
+
+    Vector operator-(const Vector &v) const
+    {
+        return Vector(this->dx - v.dx, this->dy - v.dy);
+    }
+
+    Vector operator*(double m) const
+    {
+        return Vector(this->dx * m, this->dy *m);
+    }
+};
+
 class Point
 {
 public:
     Point()
         : x(0.0)
         , y(0.0)
-        , z(0.0)
     {}
 
-    Point(double _x, double _y, double _z = 0.0)
+    Point(double _x, double _y)
         : x(_x)
         , y(_y)
-        , z(_z)
     {}
 
     double x;
     double y;
-    double z;
+
+    Point operator+(const Vector &v) const
+    {
+        return Point(this->x + v.dx, this->y + v.dy);
+    }
+
+    Point operator+(const Point &pt) const
+    {
+        return Point(this->x + pt.x, this->y + pt.y);
+    }
+    Point operator-(const Point &pt) const
+    {
+        return Point(this->x - pt.x, this->y - pt.y);
+    }
+
+    double distanceTo(const Point &pt) const
+    {
+        double dx = this->x - pt.x;
+        double dy = this->y - pt.y;
+        return std::sqrt(dx * dx + dy * dy);
+    }
 };
  
 class Line
 {
 public:
     Line()
-        : pt()
+        : pts()
     {}
 
-    Line(const Point &p1, const Point &p2)
-        : pt()
+    bool IsHorizontalAt(double loc) const
     {
-        pt[0] = p1;
-        pt[1] = p2;
-    }
-
-    bool IsFlat() const
-    {
-        return pt[0].y == pt[1].y;
-    }
-
-    double Slope() const
-    {
-        if ((pt[1].x - pt[0].x) != 0.0)
+        for (int i = 0; i < pts.size() - 1; ++i)
         {
-            return (pt[1].y - pt[0].y) / (pt[1].x - pt[0].x);
+            if (pts.at(i).x < loc && loc < pts.at(i + 1).x)
+            {
+                return pts.at(i).y == pts.at(i + 1).y;
+            }
         }
-        else
+        return false;
+    }
+
+    std::pair<Point, Point> GetSegmentFor(double loc) const
+    {
+        for (int i = 0; i < pts.size() - 1; ++i)
         {
-            return 0.0;
+            if (pts.at(i).x < loc && loc < pts.at(i + 1).x)
+            {
+                return std::make_pair(pts.at(i), pts.at(i + 1));
+            }
         }
     }
 
-    Point pt[2];
+    double GetYAtX(double loc) const
+    {
+        for (int i = 0; i < pts.size() - 1; ++i)
+        {
+            if (pts.at(i).x < loc && loc < pts.at(i + 1).x)
+            {
+                const Point &first = pts.at(i);
+                const Point &second = pts.at(i + 1);
+
+                return first.y + (loc - first.x) * (second.y - first.y) / (second.x - first.x);
+            }
+        }
+
+        return 0.0;
+    }
+
+    std::vector<Point> pts;
 };
 
- 
-double dot(Point c1, Point c2)
-{
-    return (c1.x * c2.x + c1.y * c2.y + c1.z * c2.z);
-}
- 
-double norm(Point c1)
-{
-    return std::sqrt(dot(c1, c1));
-}
- 
-double getShortestDistance(Line line1, Line line2)
-{
-    double EPS = 0.00000001;
- 
-    Point delta21;
-    delta21.x = line1.pt[1].x - line1.pt[0].x;
-    delta21.y = line1.pt[1].y - line1.pt[0].y;
-    delta21.z = line1.pt[1].z - line1.pt[0].z;
- 
-    Point delta41;
-    delta41.x = line2.pt[1].x - line2.pt[0].x;
-    delta41.y = line2.pt[1].y - line2.pt[0].y;
-    delta41.z = line2.pt[1].z - line2.pt[0].z;
- 
-    Point delta13;
-    delta13.x = line1.pt[0].x - line2.pt[0].x;
-    delta13.y = line1.pt[0].y - line2.pt[0].y;
-    delta13.z = line1.pt[0].z - line2.pt[0].z;
- 
-    double a = dot(delta21, delta21);
-    double b = dot(delta21, delta41);
-    double c = dot(delta41, delta41);
-    double d = dot(delta21, delta13);
-    double e = dot(delta41, delta13);
-    double D = a * c - b * b;
- 
-    double sc, sN, sD = D;
-    double tc, tN, tD = D;
- 
-    if (D < EPS)
-    {
-        sN = 0.0;
-        sD = 1.0;
-        tN = e;
-        tD = c;
-    }
-    else
-    {
-        sN = (b * e - c * d);
-        tN = (a * e - b * d);
-        if (sN < 0.0)
-        {
-            sN = 0.0;
-            tN = e;
-            tD = c;
-        }
-        else if (sN > sD)
-        {
-            sN = sD;
-            tN = e + b;
-            tD = c;
-        }
-    }
- 
-    if (tN < 0.0)
-    {
-        tN = 0.0;
- 
-        if (-d < 0.0)
-            sN = 0.0;
-        else if (-d > a)
-            sN = sD;
-        else
-        {
-            sN = -d;
-            sD = a;
-        }
-    }
-    else if (tN > tD)
-    {
-        tN = tD;
-        if ((-d + b) < 0.0)
-            sN = 0;
-        else if ((-d + b) > a)
-            sN = sD;
-        else
-        {
-            sN = (-d + b);
-            sD = a;
-        }
-    }
- 
-    if (std::abs(sN) < EPS) sc = 0.0;
-    else sc = sN / sD;
-    if (std::abs(tN) < EPS) tc = 0.0;
-    else tc = tN / tD;
- 
-    Point dP;
-    dP.x = delta13.x + (sc * delta21.x) - (tc * delta41.x);
-    dP.y = delta13.y + (sc * delta21.y) - (tc * delta41.y);
-    dP.z = delta13.z + (sc * delta21.z) - (tc * delta41.z);
- 
-    return std::sqrt(dot(dP, dP));
-}
-
-class Vector
+class Particle
 {
 public:
+    void Accelerate(const Vector & accel_vec, double time)
+    {
+        pos.x += velocity.dx * time + 0.5 * accel_vec.dx * time * time;
+        pos.y += velocity.dy * time + 0.5 * accel_vec.dy * time * time;
+        velocity.dx += accel_vec.dx * time;
+        velocity.dy += accel_vec.dy * time;
+    }
+
+    Vector velocity;
+    Point pos;
+};
+
+Vector GRAVITY(0.0, -3.711);
+double MAX_X = 6999.0;
+double MIN_X = 0.0;
+
+struct ControlCommand
+{
+    ControlCommand(int ang, int pwr, int dur)
+        : angle(ang)
+        , power(pwr)
+        , duration(dur)
+    {}
+
+    int angle;
+    int power;
+    int duration;
+};
+
+
+struct State
+{
+    State(int f, int pwr, int ang, Particle ldr)
+        : fuel(f)
+        , power(pwr)
+        , angle(ang)
+        , lander(ldr)
+    {}
+
+    State()
+        : fuel(0)
+        , power(0)
+        , angle(0)
+        , lander()
+    {}
+
+    int fuel;
+    int power;
+    int angle;
+    Particle lander;
+};
+
+enum FlyState
+{
+    FLYING,
+    CRASHED,
+    LANDED
+};
+
+struct Lander
+{
+    Lander(const State& is, const std::vector<ControlCommand> &cmds, const Line &gnd)
+        : initial_state(is)
+        , commands(cmds)
+        , ground(gnd)
+        , fly_state(FLYING)
+    {}
+
+    Lander()
+        : initial_state()
+        , commands()
+        , ground()
+        , fly_state(FLYING)
+    {}
+
+    void ComputeTrajectory(double time)
+    {
+        State curr_state = initial_state;
+        for (int i = 0; i < commands.size(); ++i)
+        {
+            State next_state = ComputeNextState(curr_state, commands.at(i), time);
+            trajectory.push_back(next_state);
+            curr_state = next_state;
+
+            if (EvaluateOutside(curr_state)) { return; }
+            if (EvaluateHitTheGround(curr_state)) { return; }
+            if (EvaluateNoFuel(curr_state)) { return; }
+        }
+    }
+
+    State ComputeNextState(const State &st, const ControlCommand &cmd, double time)
+    {
+        int new_ang = st.angle;
+        int new_pwr = st.power;
+
+        double elapsed = 0.0;
+        int new_fuel = st.fuel;
+        Particle new_particle = st.lander;
+        State next_state = st;
+        while (elapsed <= cmd.duration)
+        {
+            new_ang = next_state.angle + std::min(std::max((cmd.angle - next_state.angle), -15), 15);
+            new_pwr = next_state.power + std::min(std::max((cmd.power - next_state.power), -1), 1);
+            Vector thrust_accel = (Vector(0.0, 1.0) * new_pwr).rotate(new_ang * DEGREES_TO_RAD);
+            Vector accel = thrust_accel + GRAVITY;
+            new_particle.Accelerate(accel, time);
+            new_fuel = next_state.fuel - new_pwr;
+            elapsed += time;
+            next_state.angle = new_ang;
+            next_state.fuel = new_fuel;
+            next_state.power = new_pwr;
+            next_state.lander = new_particle;
+        }
+        return State(new_fuel, new_pwr, new_ang, new_particle);
+    }
+
+    bool EvaluateOutside(const State &st)
+    {
+        if (MIN_X > st.lander.pos.x || st.lander.pos.x > MAX_X)
+        {
+            fly_state = CRASHED;
+            return true;
+        }
+        return false;
+    }
+
+    bool EvaluateHitTheGround(const State &st)
+    {
+        double height_at = ground.GetYAtX(st.lander.pos.x);
+
+        if (height_at > st.lander.pos.y)
+        {
+            if (st.angle == 0 &&
+                st.lander.velocity.dy > -40.0 &&
+                std::abs(st.lander.velocity.dx) <= 20.0 &&
+                ground.IsHorizontalAt(st.lander.pos.x))
+            {
+                fly_state = LANDED;
+            }
+            else
+            {
+                fly_state = CRASHED;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    bool EvaluateNoFuel(const State &st)
+    {
+        if (st.fuel <= 0)
+        {
+            fly_state = CRASHED;
+            return true;
+        }
+        return false;
+    }
+    std::vector<ControlCommand> commands;
+    State initial_state;
+    Line ground;
+    std::vector<State> trajectory;
+    FlyState fly_state;
+};
+
+const int GENERATION_COUNT   = 220;
+const int POPULATION_SIZE    = 20;
+const int GENOME_SIZE        = 1200;
+const double UNIFORM_RATE    = 0.5;
+const double MUTATION_RATE   = 0.06;
+const double SELECTION_RATIO = 0.2;
+struct Gene
+{
+    double power;
     double angle;
-    double mag;
+    double duration;
+};
 
-    friend Vector operator+(const Vector &v1, const Vector &v2)
+struct GenomeAndCommands
+{
+    GenomeAndCommands()
+        : genes()
+        , commands()
+        , fitness_score(0.0)
+        , lander()
     {
-        if (v1.mag == 0)
-        {
-            return v2;
-        }
-        else if (v2.mag == 0)
-        {
-            return v1;
-        }
-        else
-        {
-            double v1_x = v1.mag * std::cos(v1.angle * DEGREES_TO_RAD);
-            double v1_y = v1.mag * std::sin(v1.angle * DEGREES_TO_RAD);
-            double v2_x = v2.mag * std::cos(v2.angle * DEGREES_TO_RAD);
-            double v2_y = v2.mag * std::sin(v2.angle * DEGREES_TO_RAD);
-            double v_x = v1_x + v2_x;
-            double v_y = v1_y + v2_y;
+        std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        fast_srand(static_cast<int>(now));
 
-            Vector v;
-            v.angle = std::atan(v_y / v_x) * RAD_TO_DEGREES;
-            v.mag = std::sqrt(v_x * v_x + v_y * v_y);
+        for(int i = 0; i < GENOME_SIZE; ++i)
+        {
+            Gene gene;
+            gene.angle = fast_rand(-90.0, 90.0);
+            gene.power = fast_rand(0.0, 5.0);
+            gene.duration = fast_rand(0.0, 20.0);
 
-            return v;
+            genes.push_back(gene);
         }
     }
-};
 
-class PIDController
-{
-public:
-    PIDController()
-    {}
-
-private:
-    double m_kp;
-    double m_ki;
-    double m_kd;
-
-    double m_error;
-    double m_error_prev;
-    double m_target;
-};
-
-class Autopilot
-{
-public:
-    Autopilot()
-        : m_in()
-        , m_surface_points()
-        , m_surface_lines()
-        , m_ship_loc()
-        , m_flight_path()
-        , m_is_initialized(false)
-        , m_dmd_angle(0)
-        , m_dmd_thrust(0)
-        , m_target_alt(0.0)
-        , m_debug_mode(false)
-    {}
-
-    struct Input
+    void GenerateCommandsFromGenes()
     {
-        int x;
-        int y;
-        int h_speed;   // the horizontal speed (in m/s), can be negative.
-        int v_speed;   // the vertical speed (in m/s), can be negative.
-        int fuel;      // the quantity of remaining fuel in liters.
-        int rotate;    // the rotation angle in degrees (-90 to 90).
-        int power;     // the thrust power (0 to 4).
-    };
+        commands.clear();
+        for (auto gene : genes)
+        {
+            commands.push_back(ControlCommand(static_cast<int>(gene.angle), static_cast<int>(gene.power), static_cast<int>(gene.duration)));
+            if (commands.back().power == 5) { commands.back().power = 4; }
 
-    void SetDebugMode(bool val) { m_debug_mode = val; }
+        }
+    }
 
-    Input & In() { return m_in; }
+
+    std::vector<Gene> genes;
+    std::vector<ControlCommand> commands;
+    double fitness_score;
+    Lander lander;
+};
+
+
+struct Autopilot
+{
+    Autopilot()
+        : init_state()
+        , ground()
+        , dt(1.0)
+        , landing_elev(0.0)
+    {}
+
+    void Init(const State &is)
+    {
+        init_state = is;
+    }
+
+    ControlCommand CommandAtTime(int t)
+    {
+        
+    }
+
+    void FindSolution()
+    {
+        CalculateLandingZone();
+        std::vector<GenomeAndCommands> population;
+        for (int i = 0; i < POPULATION_SIZE; ++i)
+        {
+            population.push_back(GenomeAndCommands());
+        }
+
+        SortPopulationByFitness(population);
+
+        std::vector<GenomeAndCommands> next_pop;
+        double mutation_amplitude = 0.5;
+        double mutation_rate = 0.8;
+        for (int i = 0; i < GENERATION_COUNT; ++i)
+        {
+            next_pop.clear();
+
+            /// Top 10% get saved.
+            double best_score = population.at(0).fitness_score;
+
+            for (auto & g : population)
+            {
+                if (next_pop.size() >= 5) { break; }
+                if (best_score >= 0.0)
+                {
+                    if (g.fitness_score > best_score * 0.5)
+                    {
+                        next_pop.push_back(g);
+                    }
+                }
+                else
+                {
+                    if (g.fitness_score > best_score * 1.5)
+                    {
+                        next_pop.push_back(g);
+                    }
+                }
+            }
+
+            if (next_pop.size() < 2)
+            {
+                next_pop.push_back(population.at(1));
+            }
+
+            while (next_pop.size() < POPULATION_SIZE)
+            {
+                int g1_idx = Select(population);
+                int g2_idx = Select(population);
+                if (g1_idx == g2_idx)
+                {
+                    g2_idx++;
+                }
+                next_pop.push_back(Crossover(population.at(g1_idx), population.at(g2_idx)));
+                Mutate(next_pop.back(), mutation_rate, mutation_amplitude);
+                EvaluateGenome(next_pop.back());
+            }
+            
+            if (best_score > 10000)
+            {
+                mutation_amplitude = 0.05;
+                mutation_rate = 0.5;
+            }
+            else
+            {
+                mutation_rate = std::max(0.8, mutation_rate - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.5);
+                mutation_amplitude = std::max(0.05, mutation_amplitude - (static_cast<double>(i) / static_cast<double>(GENERATION_COUNT)) * 0.1);
+            }
+            
+            population = std::move(next_pop);
+            std::sort(population.begin(), population.end(), [](const GenomeAndCommands &lh, const GenomeAndCommands &rh) { return lh.fitness_score > rh.fitness_score; });
+            double total_fitness = std::accumulate(population.begin(), population.end(), 0.0, [](double tot, const GenomeAndCommands &g) { return tot + g.fitness_score; });
+            double best_xvel = population.at(0).lander.trajectory.back().lander.velocity.dx;
+            double best_yvel = population.at(0).lander.trajectory.back().lander.velocity.dy;
+            double best_xpos = population.at(0).lander.trajectory.back().lander.pos.x;
+            double best_ypos = population.at(0).lander.trajectory.back().lander.pos.y;
+            double best_ang  = population.at(0).lander.trajectory.back().angle;
+            double best_fuel = population.at(0).lander.trajectory.back().fuel;
+            total_fitness = total_fitness;
+        }
+
+        for (int i = 0; i < population.at(0).commands.size(); ++i)
+        {
+            ControlCommand &cmd = population.at(0).commands.at(i);
+            double elapsed = 0.0;
+            while (elapsed <= cmd.duration)
+            {
+                commands.push_back(cmd);
+                elapsed += 1.0;
+            }
+        }
+
+        std::cout << population.at(0).fitness_score << std::endl;
+        //std::cin.ignore();
+    }
+
+    void PrintCommand(int i)
+    {
+        std::cout << commands.at(i).angle << " " << commands.at(i).power << std::endl;
+    }
+
+    int Select(std::vector<GenomeAndCommands> &pop)
+    {
+        std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        fast_srand(static_cast<int>(now));
+        for (int i = 0; i < pop.size() - 1; ++i)
+        {
+            double rand = fast_rand(0.0, 1.0);
+
+            if (rand <= SELECTION_RATIO * (pop.size() - i) / pop.size())
+            {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    GenomeAndCommands Crossover(const GenomeAndCommands &g1, const GenomeAndCommands &g2)
+    {
+        std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        fast_srand(static_cast<int>(now));
+        GenomeAndCommands offspring;
+        offspring.genes.clear();
+        for (int i = 0; i < g1.genes.size(); ++i)
+        {
+            double rand = fast_rand(0.0, 1.0);
+            if (rand <= UNIFORM_RATE)
+            {
+                offspring.genes.push_back(g1.genes.at(i));
+            }
+            else
+            {
+                offspring.genes.push_back(g2.genes.at(i));
+            }
+        }
+
+        return offspring;
+    }
+
+    void Mutate(GenomeAndCommands &genome, double rate, double amplitude)
+    {
+        std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        fast_srand(static_cast<int>(now));
+        for (auto & gene : genome.genes)
+        {
+            double rand = fast_rand(0.0, 1.0);
+
+            if (rand <= rate)
+            {
+                double ang_min = std::max(-90.0, gene.angle - 90.0 * amplitude);
+                double ang_max = std::min(90.0, gene.angle + 90.0 * amplitude);
+                gene.angle = fast_rand(ang_min, ang_max);
+
+                double pwr_min = std::max(0.0, gene.power - 5.0 * amplitude);
+                double pwr_max = std::min(5.0, gene.power + 5.0 * amplitude);
+                gene.power = fast_rand(pwr_min, pwr_max);
+
+                double dur_min = std::max(0.0, gene.duration - 20.0 * amplitude);
+                double dur_max = std::min(20.0, gene.duration + 20.0 * amplitude);
+                gene.duration = fast_rand(dur_min, dur_max);
+            }
+        }
+    }
 
     void AddSurfacePoint(const Point &p)
     {
-        m_surface_points.push_back(p);
-    }
-    
-    void Update()
-    {
-        m_ship_loc = Point(m_in.x, m_in.y);
-        if (!m_is_initialized)
-        {
-            Initialize();
-        }
-
-        
-        if(CheckLandingMode())
-        {
-            PerformLanding();
-        }
-        else
-        {
-            ComputeAltitudeTarget();
-            ComputeHorizontalSpeedTarget();
-            ComputeThrustCommands();
-        }
-
-        std::cout << m_dmd_angle << " " << m_dmd_thrust << std::endl;
-    }
-private:
-    bool CheckLandingMode()
-    {
-        return m_landing_surface.pt[0].x < m_ship_loc.x && m_ship_loc.x < m_landing_surface.pt[1].x && std::abs(m_in.h_speed) < 15.0;
+        ground.pts.push_back(p);
     }
 
-    void ComputeThrustCommands()
+    void CalculateLandingZone()
     {
-        double alt_error = m_target_alt - m_ship_loc.y;
-        double h_speed_error = m_target_h_speed - m_in.h_speed;
-        double v_speed_error = -35.0 - m_in.v_speed;
-
-        if (m_debug_mode)
+        for (int i = 0; i < ground.pts.size() - 1; ++i)
         {
-            std::cerr << "Alt Error: " << alt_error << std::endl;
-            std::cerr << "Vspeed Error: " << v_speed_error << std::endl;
-            std::cerr << "Speed Error: " << h_speed_error << std::endl;
-        }
-
-        Vector alt_vector;
-        alt_vector.angle = 0.0;
-        alt_vector.mag = std::max(0.2 * alt_error, 0.0);
-        std::cerr << "Alt Vector : " << alt_vector.angle << "°, " << alt_vector.mag << std::endl;
-        
-        
-
-        Vector v_speed_vector;
-        v_speed_vector.angle = 0.0;
-        v_speed_vector.mag = std::max(2.0 * v_speed_error, 0.0);
-        std::cerr << "Vspeed Vector : " << v_speed_vector.angle << "°, " << v_speed_vector.mag << std::endl;
-
-
-        Vector h_speed_vector;
-        h_speed_vector.mag = 0.25 * h_speed_error;
-        h_speed_vector.angle = (h_speed_vector.mag > 0.0) ? -70.0 : 70.0;
-        h_speed_vector.mag = std::abs(h_speed_vector.mag);
-        std::cerr << "Speed Vector : " << h_speed_vector.angle << "°, " << h_speed_vector.mag << std::endl;
-
-        Vector thrust_vect = alt_vector + h_speed_vector + v_speed_vector;
-        
-        std::cerr << "Thrust Vector : " << thrust_vect.angle << "°, " << thrust_vect.mag << std::endl;
-
-        m_dmd_angle =  static_cast<int>(thrust_vect.angle);
-        if(std::abs(m_in.rotate - m_dmd_angle) < 5.0)
-        {
-            m_dmd_thrust = static_cast<int>(std::max(std::min(thrust_vect.mag, 4.0), 0.0));
-        }
-        else
-        {
-            m_dmd_thrust = 0;
-        }
-    }
-
-    void ComputeAltitudeTarget()
-    {
-        int curr_path_tgt_idx = 0;
-        for (auto &pt : m_flight_path)
-        {
-            if (pt.x < m_ship_loc.x)
+            if (ground.pts.at(i).y == ground.pts.at(i + 1).y)
             {
-                ++curr_path_tgt_idx;
-            }
-            else 
-            {
-                break;
+                landing_elev = ground.pts.at(i).y;
+                lz_min = ground.pts.at(i).x;
+                lz_max = ground.pts.at(i+1).x;
+                return;
             }
         }
-        Line curr_flight_path;
-        if (curr_path_tgt_idx > 0)
-        {
-            curr_flight_path.pt[0] = m_flight_path[curr_path_tgt_idx - 1];
-            curr_flight_path.pt[1] = m_flight_path[curr_path_tgt_idx];
-        }
-        else
-        {
-            curr_flight_path.pt[0] = m_flight_path[0];
-            curr_flight_path.pt[1] = m_flight_path[1];
-        }
-
-        double m = curr_flight_path.Slope();
-        double b = curr_flight_path.pt[0].y - (m * curr_flight_path.pt[0].x);
-        m_target_alt = m * m_ship_loc.x + b;
-
-        if (m_debug_mode)
-        {
-            std::cerr << "Target Altitude: " << m_target_alt << std::endl;
-        }
     }
 
-    void ComputeHorizontalSpeedTarget()
+    void SortPopulationByFitness(std::vector<GenomeAndCommands> &pop)
     {
-        double lz_x_diff = m_flight_path.back().x - m_ship_loc.x;
-        
-        if (lz_x_diff < 0.0)
+        for (auto &p : pop)
         {
-            m_target_h_speed = std::min(lz_x_diff * 0.01, static_cast<double>(m_initial_h_speed));
+            EvaluateGenome(p);
         }
-        else
-        {
-            m_target_h_speed = std::max(lz_x_diff * 0.01, static_cast<double>(m_initial_h_speed));
-        }
-        
-        if (m_debug_mode)
-        {
-            std::cerr << "LZ X Diff: " << lz_x_diff << std::endl;
-            std::cerr << "Speed Target: " << m_target_h_speed << std::endl;
-        }
+
+        std::sort(pop.begin(), pop.end(), [](const GenomeAndCommands &lh, const GenomeAndCommands &rh) { return lh.fitness_score > rh.fitness_score; });
     }
 
-    void Initialize()
+    void EvaluateGenome(GenomeAndCommands &ind)
     {
-        m_initial_h_speed = m_in.h_speed;
-        for (int i = 0; i < m_surface_points.size() - 1; ++i)
-        {
-            m_surface_lines.push_back(Line(m_surface_points[i], m_surface_points[i + 1]));
-        }
+        ind.GenerateCommandsFromGenes();
+        Lander lander(init_state, ind.commands, ground);
+        lander.ComputeTrajectory(dt);
 
-        if (m_debug_mode)
+        ind.lander = lander;
+        ind.fitness_score = 0.0;
+        if (lander.fly_state == LANDED)
         {
-            for (auto & pt : m_surface_points)
+            ind.fitness_score = lander.trajectory.back().fuel * 10000.0;
+        }
+        else if (lander.fly_state == FLYING)
+        {
+            double xpos = lander.trajectory.back().lander.pos.x;
+            double ypos = lander.trajectory.back().lander.pos.y;
+            double xvel = lander.trajectory.back().lander.velocity.dx;
+            double yvel = lander.trajectory.back().lander.velocity.dy;
+            
+            ind.fitness_score += yvel;
+            ind.fitness_score += (40.0 - std::abs(xvel));
+            
+            if (lz_min < xpos && xpos < lz_max) // within the lz gets more points
             {
-                //std::cerr << "Surface Pt: " << pt.x << ", " << pt.y << std::endl;
+                double dist_from_td = ypos - landing_elev;
+                ind.fitness_score += 50.0 / dist_from_td;
             }
+
         }
-
-        FindFlightPath();
-
-        m_is_initialized = true;
-    }
-    
-    void PerformLanding()
-    {
-        std::cerr << "Landing Mode..." << std::endl;
-        double v_speed_error = -35.0 - m_in.v_speed;
-
-        if (m_debug_mode)
+        else if (lander.fly_state == CRASHED)
         {
-            std::cerr << "Vspeed Error: " << v_speed_error << std::endl;
-        }
+            double xpos = lander.trajectory.back().lander.pos.x;
+            double ypos = lander.trajectory.back().lander.pos.y;
+            double xvel = lander.trajectory.back().lander.velocity.dx;
+            double yvel = lander.trajectory.back().lander.velocity.dy;
+            int angle = lander.trajectory.back().angle;
 
-        Vector alt_vector;
-        alt_vector.angle = 0.0;
-        alt_vector.mag = std::max(2.0 * v_speed_error, 0.0);
-        std::cerr << "Vspeed Vector : " << alt_vector.angle << "°, " << alt_vector.mag << std::endl;
-
-        
-
-        Vector thrust_vect = alt_vector;
-        
-        std::cerr << "Thrust Vector : " << thrust_vect.angle << "°, " << thrust_vect.mag << std::endl;
-
-        m_dmd_angle =  static_cast<int>(thrust_vect.angle);
-        m_dmd_thrust = static_cast<int>(std::max(std::min(thrust_vect.mag, 4.0), 0.0));
-    }
-
-    void FindFlightPath()
-    {
-        // Find landing target;
-        Point lz;
-        Point flare_pt;
-        for (auto & ln : m_surface_lines)
-        {
-            if (ln.IsFlat())
+            
+            if (-40.0 <= yvel && yvel < 0.0)
             {
-                lz.x = ln.pt[0].x + (ln.pt[1].x - ln.pt[0].x) / 2.0;
-                lz.y = ln.pt[0].y;
-                flare_pt.x = ln.pt[0].x + 600.0;
-                flare_pt.y = ln.pt[1].y + 100.0;
-                m_landing_surface = ln;
+                ind.fitness_score += 100.0;
             }
-        }
-
-        m_flight_path.push_back(m_ship_loc);
-
-        Line flight_path_segment(m_ship_loc, flare_pt);
-
-        for (auto &ln : m_surface_lines)
-        {
-            if (getShortestDistance(flight_path_segment, ln) <= SHIP_RADIUS && !ln.IsFlat())
+            else if(yvel < -40)
             {
-                flight_path_segment.pt[1].x = ln.pt[1].x;
-                flight_path_segment.pt[1].y = ln.pt[1].y + 3.0 * SHIP_RADIUS;
-                double slope = flight_path_segment.Slope();
-                if (std::abs(slope) > 0.5)
+                double t = -40 - yvel;
+                ind.fitness_score -= t * t;
+            }
+            else if (yvel >= 0.0)
+            {
+                ind.fitness_score -= yvel;
+            }
+
+            if (std::abs(xvel) > 20.0)
+            {
+                double t = std::abs(20 - std::abs(xvel));
+                ind.fitness_score -= t*t;
+            }
+            else if (std::abs(xvel) < 20)
+            {
+                ind.fitness_score += 100.0;
+            }
+                        
+            if (lz_min < xpos && xpos < lz_max) // within the lz gets more points
+            {
+                ind.fitness_score += 500.0;
+
+                if (angle == 0)
                 {
-                    flight_path_segment.pt[1].y = 0.2 * (ln.pt[1].x - ln.pt[0].x) + ln.pt[0].y;
+                    ind.fitness_score += 500.0;
                 }
-                m_flight_path.push_back(flight_path_segment.pt[1]);
-                flight_path_segment = Line(m_flight_path.back(), flare_pt);
+                if (std::abs(angle) < 5)
+                {
+                    ind.fitness_score += 200.0;
+                }
+                else
+                {
+                    ind.fitness_score -= std::abs(angle)*3.0;
+                }
+            }
+            else if (xpos < lz_min)
+            {
+                ind.fitness_score -= (lz_min - xpos);
+            }
+            else if (xpos > lz_max)
+            {
+                ind.fitness_score -= (xpos - lz_max);
             }
         }
-
-        // We didnt find any additional waypoints...
-        if (m_flight_path.size() == 1)
-        {
-            m_flight_path.push_back(flight_path_segment.pt[1]);
-        }
-        else
-        {
-            m_flight_path.push_back(flare_pt);
-        }
-
-        for (auto & ln : m_flight_path)
-        {
-            std::cerr << "Flight Path: " << ln.x << ", " << ln.y << std::endl;
-        }
-        
-        m_lz_loc = lz;
-
     }
-    Input m_in;
-    std::vector<Point> m_surface_points;
-    std::vector<Line> m_surface_lines;
-    Line m_landing_surface;
-    Point m_ship_loc;
-    Point m_lz_loc;
-    std::vector<Point> m_flight_path;
-    double m_target_alt;
-    double m_target_h_speed;
-    int m_dmd_angle;
-    int m_dmd_thrust;
-    bool m_is_initialized;
-    bool m_debug_mode;
-    int m_initial_h_speed;
+
+    State init_state;
+    Line ground;
+    double dt;
+    double landing_elev;
+    double lz_min;
+    double lz_max;
+    std::vector<ControlCommand> commands;
 };
 
 void test()
 {
     Autopilot ap;
-    ap.SetDebugMode(true);
-    
+    State is;
+    is.angle = -90.0;
+    is.fuel = 8001;
+    is.power = 0;
+    is.lander.pos.x = 500;
+    is.lander.pos.y = 2700;
+    is.lander.velocity.dx = 100;
+    is.lander.velocity.dy = 0;
     ap.AddSurfacePoint(Point(   0, 1000));
     ap.AddSurfacePoint(Point( 300, 1500));
     ap.AddSurfacePoint(Point( 350, 1400));
@@ -529,40 +735,80 @@ void test()
     ap.AddSurfacePoint(Point(5500, 1500));
     ap.AddSurfacePoint(Point(6999, 2800));
 
-    ap.In().x = 500;
-    ap.In().y = 2700;
-    ap.Update();
+    ap.Init(is);
+    ap.FindSolution();
+    
 
-    ap.In().x = 1100;
-    ap.In().y = 2500;
-    ap.Update();
-}
-
-void execute()
-{
-    Autopilot ap;
-    ap.SetDebugMode(true);
-    int surfaceN; // the number of points used to draw the surface of Mars.
-    std::cin >> surfaceN; std::cin.ignore();
-    for (int i = 0; i < surfaceN; i++) {
-        int landX; // X coordinate of a surface point. (0 to 6999)
-        int landY; // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
-        std::cin >> landX >> landY; std::cin.ignore();
-        
-        ap.AddSurfacePoint(Point(landX, landY));
-    }
-
-    // game loop
-    while (1) {
-        std::cin >> ap.In().x >> ap.In().y >> ap.In().h_speed >> ap.In().v_speed >> ap.In().fuel >> ap.In().rotate >> ap.In().power; std::cin.ignore();
-        ap.Update();
-    }
 }
 
 int main()
 {
-    //test();
-    execute();
+    test();
+    //Autopilot ap;
+    //int surfaceN; // the number of points used to draw the surface of Mars.
+    //std::cin >> surfaceN; std::cin.ignore();
+    //for (int i = 0; i < surfaceN; i++) {
+    //    int landX; // X coordinate of a surface point. (0 to 6999)
+    //    int landY; // Y coordinate of a surface point. By linking all the points together in a sequential fashion, you form the surface of Mars.
+    //    std::cin >> landX >> landY; std::cin.ignore();
+    //    
+    //    ap.AddSurfacePoint(Point(landX, landY));
+    //}
+    //
+    //bool first_pass = true;
+    //int step = 0;
+    //while (1) {
+    //
+    //    int x;
+    //    int y;
+    //    int hspeed;
+    //    int vspeed;
+    //    int fuel;
+    //    int rotate;
+    //    int power;
+    //    std::cin >> x >> y >> hspeed >> vspeed >> fuel >> rotate >> power; std::cin.ignore();
+    //    if (first_pass)
+    //    {
+    //        State is;
+    //        is.angle = rotate;
+    //        is.fuel = fuel;
+    //        is.power = power;
+    //        is.lander.pos.x = x;
+    //        is.lander.pos.y = y;
+    //        is.lander.velocity.dx = hspeed;
+    //        is.lander.velocity.dy = vspeed;
+    //
+    //        ap.Init(is);
+    //        ap.FindSolution();
+    //        first_pass = false;
+    //    }
+    //    
+    //    ap.PrintCommand(step);
+    //    ++step;
+    //}
+    //ap.AddSurfacePoint(Point(   0, 1000));
+    //ap.AddSurfacePoint(Point( 300, 1500));
+    //ap.AddSurfacePoint(Point( 350, 1400));
+    //ap.AddSurfacePoint(Point( 500, 2000));
+    //ap.AddSurfacePoint(Point( 800, 1800));
+    //ap.AddSurfacePoint(Point(1000, 2500));
+    //ap.AddSurfacePoint(Point(1200, 2100));
+    //ap.AddSurfacePoint(Point(1500, 2400));
+    //ap.AddSurfacePoint(Point(2000, 1000));
+    //ap.AddSurfacePoint(Point(2200,  500));
+    //ap.AddSurfacePoint(Point(2500,  100));
+    //ap.AddSurfacePoint(Point(2900,  800));
+    //ap.AddSurfacePoint(Point(3000,  500));
+    //ap.AddSurfacePoint(Point(3200, 1000));
+    //ap.AddSurfacePoint(Point(3500, 2000));
+    //ap.AddSurfacePoint(Point(3800,  800));
+    //ap.AddSurfacePoint(Point(4000,  200));
+    //ap.AddSurfacePoint(Point(5000,  200));
+    //ap.AddSurfacePoint(Point(5500, 1500));
+    //ap.AddSurfacePoint(Point(6999, 2800));
+
     return 0;
 }
+
+
 

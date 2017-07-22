@@ -29,6 +29,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HorseRacingDuals", "HorseRa
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThereIsNoSpoon", "ThereIsNoSpoon\ThereIsNoSpoon.vcxproj", "{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SkyNet", "SkyNet\SkyNet.vcxproj", "{5936F961-FACB-47CE-B225-41195363C37A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -141,6 +143,14 @@ Global
 		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x64.Build.0 = Release|x64
 		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x86.ActiveCfg = Release|Win32
 		{2448E5F7-B41D-4A9F-BAD8-ABD7F6968CB6}.Release|x86.Build.0 = Release|Win32
+		{5936F961-FACB-47CE-B225-41195363C37A}.Debug|x64.ActiveCfg = Debug|x64
+		{5936F961-FACB-47CE-B225-41195363C37A}.Debug|x64.Build.0 = Debug|x64
+		{5936F961-FACB-47CE-B225-41195363C37A}.Debug|x86.ActiveCfg = Debug|Win32
+		{5936F961-FACB-47CE-B225-41195363C37A}.Debug|x86.Build.0 = Debug|Win32
+		{5936F961-FACB-47CE-B225-41195363C37A}.Release|x64.ActiveCfg = Release|x64
+		{5936F961-FACB-47CE-B225-41195363C37A}.Release|x64.Build.0 = Release|x64
+		{5936F961-FACB-47CE-B225-41195363C37A}.Release|x86.ActiveCfg = Release|Win32
+		{5936F961-FACB-47CE-B225-41195363C37A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
